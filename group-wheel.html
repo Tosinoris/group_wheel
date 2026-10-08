@@ -1,0 +1,412 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0e2a2c">
+<title>Group wheel</title>
+<style>
+  :root{
+    --bg:#0e2a2c;
+    --bg-2:#153b3e;
+    --line:#2a5a5d;
+    --ink:#f3f7f4;
+    --muted:#9bbcbc;
+    --pop:#ffd23f;
+    --pop-ink:#1b1b12;
+    --danger:#ff7a6b;
+    --radius:16px;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;background:var(--bg);color:var(--ink)}
+  body{
+    font-family: ui-rounded, "SF Pro Rounded", "Avenir Next", system-ui, -apple-system, "Segoe UI", sans-serif;
+    min-height:100vh;
+    padding:max(16px, env(safe-area-inset-top)) 16px max(28px, env(safe-area-inset-bottom));
+    display:flex;justify-content:center;
+  }
+  main{width:100%;max-width:460px;display:flex;flex-direction:column;gap:18px}
+  h1{margin:6px 0 0;font-size:34px;line-height:1.05;font-weight:850;letter-spacing:-.02em}
+  .sub{margin:4px 0 0;color:var(--muted);font-size:15px}
+
+  label.field{display:block;font-size:14px;color:var(--muted);margin-bottom:6px}
+  input[type=text], textarea{
+    width:100%;font:inherit;font-size:16px; /* 16px stops iOS zoom on focus */
+    color:var(--ink);background:var(--bg-2);border:1.5px solid var(--line);
+    border-radius:12px;padding:12px 14px;outline:none;
+  }
+  input[type=text]:focus, textarea:focus{border-color:var(--pop)}
+  textarea{min-height:92px;resize:vertical}
+
+  /* wheel */
+  .stage{position:relative;width:min(100%,440px);aspect-ratio:1;margin:0 auto}
+  canvas#wheel{width:100%;height:100%;display:block;touch-action:manipulation}
+  .pointer{
+    position:absolute;left:50%;top:-6px;transform:translateX(-50%);
+    width:0;height:0;border-left:15px solid transparent;border-right:15px solid transparent;
+    border-top:30px solid var(--pop);filter:drop-shadow(0 3px 0 rgba(0,0,0,.35));z-index:2;
+  }
+  .hub{
+    position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+    width:24%;aspect-ratio:1;border-radius:50%;border:0;cursor:pointer;
+    background:var(--pop);color:var(--pop-ink);font:inherit;font-weight:850;font-size:clamp(15px,4.6vw,20px);
+    box-shadow:0 0 0 6px var(--bg), 0 6px 0 6px rgba(0,0,0,.28);
+    z-index:2;
+  }
+  .hub:active{transform:translate(-50%,-47%)}
+  .hub:disabled{opacity:.55;cursor:default}
+
+  .btn{
+    font:inherit;font-weight:700;font-size:17px;border:0;border-radius:14px;padding:14px 18px;cursor:pointer;
+    background:var(--pop);color:var(--pop-ink);width:100%;
+  }
+  .btn.ghost{background:transparent;color:var(--ink);border:1.5px solid var(--line)}
+  .btn.small{width:auto;font-size:15px;padding:10px 14px}
+  .btn:disabled{opacity:.5;cursor:default}
+  .row{display:flex;gap:10px}
+  .row > *{flex:1}
+
+  /* people */
+  .panel{background:rgba(255,255,255,.04);border:1.5px solid var(--line);border-radius:var(--radius);padding:16px}
+  .panel h2{margin:0 0 12px;font-size:18px;font-weight:800}
+  .count{color:var(--muted);font-weight:600;font-size:15px}
+  .chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+  .chip{
+    display:inline-flex;align-items:center;gap:6px;background:var(--bg-2);border:1.5px solid var(--line);
+    border-radius:999px;padding:6px 6px 6px 12px;font-size:15px;
+  }
+  .chip button{
+    width:26px;height:26px;border-radius:50%;border:0;background:rgba(255,255,255,.1);color:var(--ink);
+    font-size:16px;line-height:1;cursor:pointer;
+  }
+  .chip button:hover{background:var(--danger);color:#2a0d09}
+  .empty{color:var(--muted);font-size:15px;margin:12px 0 0}
+  .toggle{display:flex;align-items:center;gap:10px;font-size:16px;cursor:pointer}
+  .toggle input{width:22px;height:22px;accent-color:var(--pop)}
+
+  ol.picked{margin:0;padding-left:26px;display:flex;flex-direction:column;gap:6px;font-size:17px}
+  ol.picked li::marker{color:var(--pop);font-weight:800}
+
+  /* winner */
+  .overlay{
+    position:fixed;inset:0;background:rgba(6,20,21,.82);display:none;align-items:center;justify-content:center;
+    padding:20px;z-index:10;
+  }
+  .overlay.show{display:flex}
+  .card{
+    width:100%;max-width:400px;background:var(--bg-2);border:2px solid var(--pop);border-radius:24px;
+    padding:28px 22px 22px;text-align:center;position:relative;z-index:12;
+  }
+  .card .small-line{color:var(--muted);font-size:16px;margin:0}
+  .card .winner{font-size:clamp(38px,12vw,58px);font-weight:900;line-height:1.05;margin:10px 0 22px;overflow-wrap:anywhere;letter-spacing:-.02em}
+  .card .stack{display:flex;flex-direction:column;gap:10px}
+  canvas#confetti{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:11}
+  .pop-in{animation:pop .45s cubic-bezier(.2,1.4,.4,1)}
+  @keyframes pop{from{transform:scale(.7);opacity:0}to{transform:scale(1);opacity:1}}
+  @media (prefers-reduced-motion: reduce){ .pop-in{animation:none} }
+  :focus-visible{outline:3px solid var(--pop);outline-offset:2px}
+  .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Spin the wheel</h1>
+    <p class="sub">Add everyone in the group, then spin. Each winner comes off the wheel.</p>
+  </header>
+
+  <div>
+    <label class="field" for="reason">What is this spin for? (shows on the winner screen)</label>
+    <input id="reason" type="text" maxlength="60" placeholder="e.g. Who pays for dinner" autocomplete="off">
+  </div>
+
+  <section class="stage" aria-label="Spinning wheel">
+    <div class="pointer" aria-hidden="true"></div>
+    <canvas id="wheel" role="img" aria-label="Wheel with group member names"></canvas>
+    <button class="hub" id="hub" aria-label="Spin the wheel">SPIN</button>
+  </section>
+
+  <button class="btn" id="spinBtn">Spin the wheel</button>
+  <div class="sr" id="live" aria-live="polite"></div>
+
+  <section class="panel">
+    <h2>Group <span class="count" id="count"></span></h2>
+    <label class="toggle"><input type="checkbox" id="removeToggle" checked> Remove each winner after they are picked</label>
+  </section>
+
+  <section class="panel">
+    <h2>Add people</h2>
+    <label class="field" for="bulk">Paste names, one per line or separated by commas</label>
+    <textarea id="bulk" placeholder="Amara&#10;Ben&#10;Chloe"></textarea>
+    <div class="row" style="margin-top:10px">
+      <button class="btn small" id="addBtn">Add names</button>
+      <button class="btn small ghost" id="clearBtn">Clear everyone</button>
+    </div>
+    <div class="chips" id="chips"></div>
+    <p class="empty" id="emptyMsg" hidden>No one on the wheel yet. Add some names above.</p>
+  </section>
+
+  <section class="panel" id="pickedPanel" hidden>
+    <h2>Already picked</h2>
+    <ol class="picked" id="pickedList"></ol>
+    <div class="row" style="margin-top:14px">
+      <button class="btn small ghost" id="resetBtn">Put everyone back</button>
+    </div>
+  </section>
+</main>
+
+<div class="overlay" id="overlay" role="dialog" aria-modal="true" aria-labelledby="winnerName">
+  <canvas id="confetti"></canvas>
+  <div class="card pop-in" id="card">
+    <p class="small-line" id="winnerLine">The wheel picked</p>
+    <div class="winner" id="winnerName"></div>
+    <div class="stack">
+      <button class="btn" id="shareBtn">Send result to WhatsApp</button>
+      <button class="btn ghost" id="nextBtn">Done</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  // ---- Starter names. Replace these with your group, or clear and paste your own.
+  let roster = ["Femi","Charlie","Kunle","Iyabo","Seun","Shade","Rajah","Banke","Dolapo","Yemisi","Tosin"];
+  let names  = [...roster];
+  let picked = [];
+  let rot = 0;                 // wheel rotation in radians
+  let spinning = false;
+  let pending = null;          // winner waiting for the "Done" tap
+
+  const COLORS = ["#f25c54","#f7b267","#f4e285","#7bd389","#3fb5a5","#4d9de0","#8a7bd1","#e86aa6"];
+  const TWO_PI = Math.PI * 2;
+
+  const $ = id => document.getElementById(id);
+  const canvas = $("wheel"), ctx = canvas.getContext("2d");
+  const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  const rand = n => {            // unbiased-enough secure random int in [0,n)
+    const a = new Uint32Array(1); crypto.getRandomValues(a);
+    return Math.floor(a[0] / 4294967296 * n);
+  };
+  const lum = hex => {
+    const r = parseInt(hex.slice(1,3),16), g = parseInt(hex.slice(3,5),16), b = parseInt(hex.slice(5,7),16);
+    return (0.299*r + 0.587*g + 0.114*b) / 255;
+  };
+
+  // ---------- drawing ----------
+  function draw(){
+    const dpr = window.devicePixelRatio || 1;
+    const size = canvas.clientWidth;
+    if (canvas.width !== Math.round(size*dpr)) { canvas.width = canvas.height = Math.round(size*dpr); }
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    ctx.clearRect(0,0,size,size);
+    const cx = size/2, cy = size/2, R = size/2 - 10;
+
+    // rim
+    ctx.beginPath(); ctx.arc(cx,cy,R+8,0,TWO_PI); ctx.fillStyle="#0a1d1f"; ctx.fill();
+    ctx.lineWidth=3; ctx.strokeStyle="#ffd23f"; ctx.stroke();
+
+    const n = names.length;
+    if (n === 0){
+      ctx.beginPath(); ctx.arc(cx,cy,R,0,TWO_PI); ctx.fillStyle="#153b3e"; ctx.fill();
+      ctx.fillStyle="#9bbcbc"; ctx.textAlign="center"; ctx.textBaseline="middle";
+      ctx.font = `700 ${Math.round(size*0.05)}px ui-rounded, system-ui, sans-serif`;
+      ctx.fillText(picked.length ? "Everyone has been picked" : "Add names to begin", cx, cy + size*0.16);
+      return;
+    }
+
+    const seg = TWO_PI / n;
+    for (let i=0;i<n;i++){
+      const a0 = rot + i*seg, a1 = a0 + seg;
+      const col = COLORS[i % COLORS.length];
+      // avoid same color touching at the wrap point
+      const color = (n % COLORS.length === 1 && i === n-1 && n > 1) ? COLORS[3] : col;
+      ctx.beginPath(); ctx.moveTo(cx,cy); ctx.arc(cx,cy,R,a0,a1); ctx.closePath();
+      ctx.fillStyle = color; ctx.fill();
+      if (n > 1){ ctx.lineWidth=2; ctx.strokeStyle="rgba(10,29,31,.55)"; ctx.stroke(); }
+
+      // label
+      ctx.save();
+      ctx.translate(cx,cy);
+      ctx.rotate(a0 + seg/2);
+      ctx.textAlign="right"; ctx.textBaseline="middle";
+      const arcAtText = TWO_PI * R * 0.7 / n;
+      const fs = Math.max(11, Math.min(size*0.058, arcAtText*0.55));
+      ctx.font = `800 ${fs}px ui-rounded, "SF Pro Rounded", system-ui, sans-serif`;
+      ctx.fillStyle = lum(color) > 0.62 ? "#10282a" : "#ffffff";
+      const maxW = R*0.95 - size*0.14;
+      let label = names[i];
+      if (ctx.measureText(label).width > maxW){
+        while (label.length > 1 && ctx.measureText(label + "…").width > maxW) label = label.slice(0,-1);
+        label += "…";
+      }
+      ctx.fillText(label, R - 14, 0);
+      ctx.restore();
+    }
+  }
+
+  // ---------- spin ----------
+  function spin(){
+    if (spinning || names.length === 0) return;
+    spinning = true; setBusy(true);
+    const n = names.length, seg = TWO_PI / n;
+    const w = rand(n);
+    const jitter = (Math.random() - 0.5) * seg * 0.7;       // land anywhere inside the slice, not dead centre
+    const target = -Math.PI/2 - (w + 0.5) * seg + jitter;   // pointer sits at the top
+    let delta = (((target - rot) % TWO_PI) + TWO_PI) % TWO_PI;
+    delta += TWO_PI * (5 + rand(3));
+    const start = rot, dur = reduceMotion ? 600 : 5200 + rand(1200);
+    const t0 = performance.now();
+    const ease = t => 1 - Math.pow(1 - t, 4);
+
+    function frame(now){
+      const t = Math.min(1, (now - t0) / dur);
+      rot = start + delta * ease(t);
+      draw();
+      if (t < 1) requestAnimationFrame(frame);
+      else finish(w);
+    }
+    requestAnimationFrame(frame);
+  }
+
+  function finish(i){
+    spinning = false;
+    const winner = names[i];
+    pending = winner;
+    picked.push(winner);
+    $("winnerName").textContent = winner;
+    $("winnerLine").textContent = ($("reason").value.trim() || "The wheel picked");
+    $("live").textContent = winner + " was picked";
+    $("overlay").classList.add("show");
+    const card = $("card"); card.classList.remove("pop-in"); void card.offsetWidth; card.classList.add("pop-in");
+    $("nextBtn").focus();
+    if (!reduceMotion) confetti();
+    renderLists();
+  }
+
+  function closeWinner(){
+    $("overlay").classList.remove("show");
+    stopConfetti();
+    if (pending !== null){
+      if ($("removeToggle").checked){
+        const idx = names.indexOf(pending);
+        if (idx > -1) names.splice(idx,1);
+      }
+      pending = null;
+    }
+    setBusy(false);
+    renderLists(); draw();
+  }
+
+  function shareWinner(){
+    const reason = $("reason").value.trim();
+    const text = (reason ? reason + ": " : "The wheel picked: ") + (picked[picked.length-1] || "") + " 🎉";
+    window.open("https://wa.me/?text=" + encodeURIComponent(text), "_blank");
+  }
+
+  // ---------- people ----------
+  function addNames(raw){
+    const parts = raw.split(/[\n,]+/).map(s => s.trim()).filter(Boolean);
+    let added = 0;
+    for (const p of parts){
+      const name = p.slice(0,30);
+      const exists = roster.some(r => r.toLowerCase() === name.toLowerCase());
+      if (exists) continue;
+      roster.push(name);
+      names.push(name);
+      added++;
+    }
+    return added;
+  }
+
+  function removePerson(name){
+    roster = roster.filter(r => r !== name);
+    names  = names.filter(r => r !== name);
+    picked = picked.filter(r => r !== name);
+    renderLists(); draw();
+  }
+
+  function renderLists(){
+    $("count").textContent = names.length ? `(${names.length} on the wheel)` : "";
+    const chips = $("chips"); chips.innerHTML = "";
+    names.forEach(nm => {
+      const c = document.createElement("span"); c.className = "chip";
+      c.append(document.createTextNode(nm));
+      const b = document.createElement("button");
+      b.type = "button"; b.textContent = "×"; b.setAttribute("aria-label","Remove " + nm);
+      b.onclick = () => { if (!spinning) removePerson(nm); };
+      c.append(b); chips.append(c);
+    });
+    $("emptyMsg").hidden = names.length > 0;
+    $("emptyMsg").textContent = picked.length
+      ? "Everyone has been picked. Tap “Put everyone back” to go again."
+      : "No one on the wheel yet. Add some names above.";
+
+    const pl = $("pickedList"); pl.innerHTML = "";
+    picked.forEach(nm => { const li = document.createElement("li"); li.textContent = nm; pl.append(li); });
+    $("pickedPanel").hidden = picked.length === 0;
+    setBusy(spinning || pending !== null);
+  }
+
+  function setBusy(b){
+    const off = b || names.length === 0;
+    $("spinBtn").disabled = off; $("hub").disabled = off;
+    $("spinBtn").textContent = spinning ? "Spinning…" : "Spin the wheel";
+  }
+
+  // ---------- confetti ----------
+  let confettiRAF = null;
+  function confetti(){
+    const cv = $("confetti"), c = cv.getContext("2d");
+    const dpr = window.devicePixelRatio || 1;
+    cv.width = innerWidth*dpr; cv.height = innerHeight*dpr; c.setTransform(dpr,0,0,dpr,0,0);
+    const bits = Array.from({length:140}, () => ({
+      x: innerWidth/2 + (Math.random()-.5)*80, y: innerHeight*0.45,
+      vx: (Math.random()-.5)*13, vy: -Math.random()*14 - 4,
+      s: 6 + Math.random()*7, r: Math.random()*6, vr:(Math.random()-.5)*.4,
+      col: COLORS[rand(COLORS.length)]
+    }));
+    const t0 = performance.now();
+    (function tick(now){
+      c.clearRect(0,0,innerWidth,innerHeight);
+      bits.forEach(p => {
+        p.vy += 0.38; p.x += p.vx; p.y += p.vy; p.vx *= .99; p.r += p.vr;
+        c.save(); c.translate(p.x,p.y); c.rotate(p.r); c.fillStyle = p.col; c.fillRect(-p.s/2,-p.s/3,p.s,p.s*.66); c.restore();
+      });
+      if (now - t0 < 3200) confettiRAF = requestAnimationFrame(tick); else c.clearRect(0,0,innerWidth,innerHeight);
+    })(t0);
+  }
+  function stopConfetti(){
+    if (confettiRAF) cancelAnimationFrame(confettiRAF);
+    const cv = $("confetti"); cv.getContext("2d").clearRect(0,0,cv.width,cv.height);
+  }
+
+  // ---------- wiring ----------
+  $("spinBtn").onclick = spin;
+  $("hub").onclick = spin;
+  $("nextBtn").onclick = closeWinner;
+  $("shareBtn").onclick = shareWinner;
+  $("addBtn").onclick = () => {
+    if (spinning) return;
+    const n = addNames($("bulk").value);
+    if (n) $("bulk").value = "";
+    renderLists(); draw();
+  };
+  $("clearBtn").onclick = () => {
+    if (spinning) return;
+    if (!roster.length || confirm("Remove everyone from the wheel?")){
+      roster = []; names = []; picked = []; renderLists(); draw();
+    }
+  };
+  $("resetBtn").onclick = () => {
+    if (spinning) return;
+    names = [...roster]; picked = []; renderLists(); draw();
+  };
+  window.addEventListener("resize", draw);
+  document.addEventListener("keydown", e => { if (e.key === "Escape" && $("overlay").classList.contains("show")) closeWinner(); });
+
+  renderLists(); draw();
+})();
+</script>
+</body>
+</html>
